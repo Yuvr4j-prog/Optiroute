@@ -7,6 +7,7 @@ backend/firebase-adminsdk.json
 
 # Local state and generated files
 backend/data/
+backend/.model_cache/
 *.db
 *.sqlite
 *.bak

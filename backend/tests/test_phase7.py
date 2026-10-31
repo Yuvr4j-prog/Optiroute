@@ -8,7 +8,6 @@ import os
 import sys
 from pathlib import Path
 import pytest
-from sentence_transformers import SentenceTransformer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -34,7 +33,7 @@ def build_request(prompt: str) -> ChatCompletionRequest:
 
 def build_response(content: str) -> ChatCompletionResponse:
     return ChatCompletionResponse(
-        model="gpt-4o",
+        model="openai/gpt-oss-20b",
         choices=[Choice(message=ChoiceMessage(content=content))]
     )
 
@@ -43,40 +42,40 @@ def test_exact_cache_hit(cache_mgr):
     resp = build_response("4")
     
     # Save cache
-    asyncio.run(cache_mgr.save_cache(req, resp))
+    asyncio.run(cache_mgr.save_cache(req, resp, "user-demo", "test-uid"))
     
     # Check cache (should be exact hit)
-    hit = asyncio.run(cache_mgr.check_cache(req))
+    hit = asyncio.run(cache_mgr.check_cache(req, "user-demo", "test-uid"))
     assert hit is not None
-    assert hit.choices[0].message.content == "4"
+    assert hit[0].choices[0].message.content == "4"
 
 def test_semantic_cache_hit(cache_mgr):
     req1 = build_request("How do I learn Python programming?")
     resp = build_response("Start with the official tutorial.")
     
     # Save cache
-    asyncio.run(cache_mgr.save_cache(req1, resp))
+    asyncio.run(cache_mgr.save_cache(req1, resp, "user-demo", "test-uid"))
     
     # Check cache with semantically similar prompt
     req2 = build_request("What's the best way to start learning Python?")
-    hit = asyncio.run(cache_mgr.check_cache(req2))
+    hit = asyncio.run(cache_mgr.check_cache(req2, "user-demo", "test-uid"))
     
     # With a threshold of 0.95, this might not hit, or it might depending on the model.
     # Let's write a prompt that is basically identical to ensure >0.95 similarity.
     req3 = build_request("How do I learn python programming?") # case change
-    hit3 = asyncio.run(cache_mgr.check_cache(req3))
+    hit3 = asyncio.run(cache_mgr.check_cache(req3, "user-demo", "test-uid"))
     assert hit3 is not None
-    assert hit3.choices[0].message.content == "Start with the official tutorial."
+    assert hit3[0].choices[0].message.content == "Start with the official tutorial."
 
 def test_cache_miss(cache_mgr):
     req1 = build_request("Who won the world cup in 2022?")
     resp = build_response("Argentina")
     
     # Save cache
-    asyncio.run(cache_mgr.save_cache(req1, resp))
+    asyncio.run(cache_mgr.save_cache(req1, resp, "user-demo", "test-uid"))
     
     # Completely unrelated prompt
     req2 = build_request("What is the capital of France?")
-    hit = asyncio.run(cache_mgr.check_cache(req2))
+    hit = asyncio.run(cache_mgr.check_cache(req2, "user-demo", "test-uid"))
     assert hit is None
 

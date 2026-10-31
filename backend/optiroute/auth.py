@@ -8,6 +8,7 @@ protected request.
 
 import os
 import logging
+import json
 
 import firebase_admin
 from firebase_admin import auth as firebase_auth, credentials
@@ -32,16 +33,18 @@ def _init_firebase():
     if not project_id:
         raise RuntimeError("FIREBASE_PROJECT_ID environment variable is not set")
 
-    # The user instruction said: "Try this without a service account file first, 
-    # and only fall back to a service account key (gitignored, never committed) 
-    # if verification fails."
-    # Since verification locally threw DefaultCredentialsError, we fall back to a file.
-    # If the file isn't present, we use AnonymousCredentials which allows verify_id_token
-    # to fetch public keys without needing a full service account.
+    # Render needs a service-account credential to access Firestore. Keep the
+    # JSON in an environment variable, never in Git. Local development can
+    # continue using a gitignored file or public-key-only token verification.
     sa_path = os.path.join(os.path.dirname(__file__), "..", "firebase-adminsdk.json")
+    sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
     
     try:
-        if os.path.exists(sa_path):
+        if sa_json:
+            cred = credentials.Certificate(json.loads(sa_json))
+            _firebase_app = firebase_admin.initialize_app(cred, options={"projectId": project_id})
+            logger.info("Firebase Admin initialised using service account environment variable.")
+        elif os.path.exists(sa_path):
             cred = credentials.Certificate(sa_path)
             _firebase_app = firebase_admin.initialize_app(cred, options={"projectId": project_id})
             logger.info("Firebase Admin initialised using service account file.")

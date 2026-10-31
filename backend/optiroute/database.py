@@ -18,6 +18,8 @@ from typing import Optional, Any
 
 import aiosqlite
 
+from optiroute import firestore_persistence as durable
+
 # ---------------------------------------------------------------------------
 # Path
 # ---------------------------------------------------------------------------
@@ -279,7 +281,7 @@ async def get_connection() -> aiosqlite.Connection:
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
-    return db
+    return durable.wrap(db, _db_path())
 
 
 def _response_content(response_json: str) -> str | None:
@@ -328,6 +330,7 @@ async def _claim_legacy_cache_entries(db: aiosqlite.Connection) -> None:
 
 async def init_db() -> None:
     """Create all tables (if not existing) and seed initial data."""
+    await durable.restore_before_init(_db_path())
     db = await get_connection()
     try:
         # Create schema

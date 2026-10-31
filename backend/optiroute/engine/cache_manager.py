@@ -2,19 +2,43 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import re
 import unicodedata
 import uuid
 import weakref
+from pathlib import Path
 from typing import Optional
-
-from sentence_transformers import SentenceTransformer, util
 
 from optiroute.models import ChatCompletionRequest, ChatCompletionResponse
 from optiroute import database as db
 from optiroute.engine.workload import clearly_incomplete_code_answer, is_complete_code_request
 
 logger = logging.getLogger("optiroute")
+
+
+class _EmbeddingModel:
+    """Run the existing MiniLM model through ONNX instead of PyTorch."""
+
+    def __init__(self):
+        from fastembed import TextEmbedding
+
+        self._model = TextEmbedding(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            threads=1,
+            cache_dir=str(Path(__file__).resolve().parents[2] / ".model_cache"),
+        )
+
+    def encode(self, text: str, convert_to_tensor: bool = False):
+        # Return a NumPy vector for compatibility with existing stored vectors.
+        return next(self._model.embed([text]))
+
+
+def _cosine_similarity(left, right) -> float:
+    numerator = math.fsum(float(a) * float(b) for a, b in zip(left, right))
+    left_norm = math.sqrt(math.fsum(float(value) ** 2 for value in left))
+    right_norm = math.sqrt(math.fsum(float(value) ** 2 for value in right))
+    return numerator / (left_norm * right_norm) if left_norm and right_norm else 0.0
 
 
 class CacheManager:
@@ -70,7 +94,7 @@ class CacheManager:
     @classmethod
     def get_model(cls):
         if cls._model is None:
-            cls._model = SentenceTransformer("all-MiniLM-L6-v2")
+            cls._model = _EmbeddingModel()
         return cls._model
 
     def _extract_prompt(self, request: ChatCompletionRequest) -> str:
@@ -460,11 +484,11 @@ class CacheManager:
                         continue
                     # Old cache rows stored vectors for the full sentence.
                     # Re-encode their normalized meaning once when encountered.
-                    if not embedding:
+                    if not embedding or metadata.get("embedding_backend") != "fastembed-minilm-v1":
                         embedding = model.encode(
                             self._meaning_prompt(stored_prompt)
                         ).tolist()
-                    score = util.cos_sim(query_embedding, embedding).item()
+                    score = _cosine_similarity(query_embedding, embedding)
                     if self._is_semantic_match(score, prompt, stored_prompt) and (
                         best_cache is None or score > best_cache[0]
                     ):
@@ -482,7 +506,7 @@ class CacheManager:
                 old_embedding = model.encode(
                     self._meaning_prompt(old_prompt), convert_to_tensor=True
                 )
-                score = util.cos_sim(query_embedding, old_embedding).item()
+                score = _cosine_similarity(query_embedding, old_embedding)
                 if self._is_semantic_match(score, prompt, old_prompt) and (
                     best_history is None or score > best_history[0]
                 ):
@@ -525,6 +549,7 @@ class CacheManager:
             # Keep a meaning-focused vector so wrappers like “what is” and
             # “tell me about” do not dominate the semantic comparison.
             "meaning_embedding": model.encode(meaning_prompt).tolist(),
+            "embedding_backend": "fastembed-minilm-v1",
         }
         if replace_existing:
             # Replace the old answer as a new cache row only after a complete
