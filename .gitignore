@@ -1,0 +1,39 @@
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+backend/firebase-adminsdk.json
+*service-account*.json
+
+# Local state and generated files
+backend/data/
+*.db
+*.sqlite
+*.bak
+*.log
+*.zip
+*.pdf
+*.docx
+node_modules/
+dist/
+.venv/
+.deps/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.local
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Historical local handoff and analysis documents
+DECISIONS.md
+PROJECT_CONTEXT.md
+TESTER_SETUP.md
+backend/DECISIONS.md
+backend/README.md
+backend/test_diag.png
+build_deployment_zip.py
